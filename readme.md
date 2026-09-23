@@ -1,8 +1,8 @@
-# Image Spectrumizer 5.5
+# Image Spectrumizer 5.6
 
 ![Screenshot](img2spec2.jpg)
 
-GUI tool for converting images to ZX Spectrum and retro-platform formats, with **video processing**, **keyframe interpolation**, and **CLI pipe mode**.
+GUI tool for converting images to ZX Spectrum and retro-platform formats, with **video processing**, **keyframe interpolation**, **CLI pipe mode** and **libdither-powered dithering** (19 error-diffusion kernels, 43 ordered matrices, 10 color-distance modes, mono dithering families).
 
 Originally by [Jari Komppa](https://github.com/jarikomppa/img2spec). Extended with video mode, keyframes, CLI batch/pipe, and export pipeline by [nodeus](https://nodeus.ru).
 
@@ -29,9 +29,18 @@ Convert images to retro-platform bitmap formats with real-time interactive previ
 | **C64 HiRes** | 320x200 | Commodore 64 high-resolution bitmap mode |
 | **C64 Multicolor** | 160x200 | C64 multicolor mode (4 colors per 8x8 cell) |
 
-### Modifiers (14 stackable, real-time)
+### Modifiers (15 stackable, real-time)
 
-ScalePos, Quantize, Ordered Dither, Error Diffusion Dither, Edge, Blur, Min/Max, HSV, YIQ, RGB, Contrast, Curve, Noise, SuperBlack
+ScalePos, Quantize, Ordered Dither, Error Diffusion Dither, Mono Dither, Edge, Blur, Min/Max, HSV, YIQ, RGB, Contrast, Curve, Noise, SuperBlack
+
+### Dithering (libdither)
+
+Dithering engine is powered by vendored [libdither](https://github.com/robertkist/libdither) (`src/libdither/`, see `VENDOR.txt`):
+
+- **Error Diffusion Dither** — 19 kernels: Floyd-Steinberg, Jarvis-Judice-Ninke, Stucki, Burkes, Sierra3, Sierra2, Sierra Lite, Diagonal, ShiauFan 1/2/3, Diffusion 1D/2D, Fake Floyd-Steinberg, Atkinson, Steve Pigeon, Robert Kist, Stevenson-Arce, Xot. Settings: direction (4 modes incl. serpentine), jitter (sigma + seed), color distance
+- **Ordered Dither** — 43 matrices: Bayer 2x2–32x32, Blue Noise 128x128, Dispersed/Void dots, Non-Rectangular, Ulichney, Clustered Dot 1–11, Central/Balanced/Diagonal points, Magic Circle/45-degree/standard, Variable 2x2/4x4 (step), Interleaved Gradient. Settings: X/Y offsets, jitter, color distance
+- **Mono Dither** (new) — 11 luminance families: Threshold (+Auto), Grid, Pattern, Dot Diffusion, Dot Lippens, Variable Error Diffusion (Ostromoukhov/Zhou Fang), DBS, Kacker-Allebach, Riemersma (8 space-filling curves), mono Error Diffusion, mono Ordered. Mask apply switch: Modulate (keeps hue) / Replace B/W, plus Invert and linear-gamma luma
+- **Color distance** (10 modes for color ditherers): Luminance, sRGB, Linear, HSV, LAB76, LAB94, LAB2000, sRGB CCIR, Linear CCIR, Tetrapal
 
 ### Export Formats
 
@@ -111,7 +120,7 @@ cmake ..
 make
 ```
 
-Dependencies: SDL2, OpenGL. On Linux: GTK3. On macOS: AppKit.
+Dependencies: SDL2, OpenGL. On Linux: GTK3. On macOS: AppKit. Vendored libdither C sources require C11 or newer (`C_STANDARD 11` is set in CMakeLists; MSVC needs `/std:clatest` or VS2019+ defaults — the legacy v120 toolset cannot build them, use a CMake-generated solution).
 
 ### Visual Studio
 
@@ -155,6 +164,10 @@ echo '{"src":"img.png","workspace":"conv.isw","dst":"out.png"}' | img2spec --bat
 | **Dear ImGui** | MIT | https://github.com/ocornut/imgui |
 | **Parson** | MIT | https://github.com/kgabis/parson |
 | **stb libraries** | Public Domain | https://github.com/nothings/stb |
+| **libdither** | MIT | https://github.com/robertkist/libdither |
+| **kdtree** (via libdither) | MIT-style, attribution required | https://github.com/jtsiomb/kdtree |
+| **uthash** (via libdither) | BSD-style, attribution required | https://github.com/troydhanson/uthash |
+| **tetrapal** (via libdither) | MIT | vendored in libdither |
 | **ffmpeg** | GPL/LGPL | https://ffmpeg.org/ |
 
 ---

@@ -1,5 +1,28 @@
 # Changelog
 
+## 5.6 — libdither Dithering Engine
+
+### New Features
+
+- **Dithering powered by vendored libdither** (`src/libdither/`, upstream `7bf49c5`, see `VENDOR.txt`)
+- **Error Diffusion Dither: 19 kernels** (was 7) — added Diagonal, ShiauFan 1/2/3, Diffusion 1D/2D, Fake Floyd-Steinberg, Atkinson, Steve Pigeon, Robert Kist, Stevenson-Arce, Xot; generic kernel sizes replace the fixed 3x5 grid
+- **Ordered Dither: 43 matrices** (was 5) — Bayer up to 32x32, Blue Noise 128x128, Dispersed/Void dots, Non-Rectangular, Ulichney, Clustered Dot 1–11, Central/Balanced/Diagonal points, Magic Circle/45-degree/standard, Variable 2x2/4x4 with step, Interleaved Gradient with size/A/B/C
+- **New Mono Dither modifier** — 11 luminance families: Threshold (+Auto via `auto_threshold`), Grid, Pattern, Dot Diffusion (3 diffusions x 9 class matrices), Dot Lippens, Variable Error Diffusion (Ostromoukhov/Zhou Fang), DBS (0–7), Kacker-Allebach, Riemersma (8 space-filling curves, original/improved), mono Error Diffusion, mono Ordered; mask apply switch Modulate (keeps hue) / Replace B/W + Invert + linear-gamma luma
+- **Color distance: 10 modes** for color ditherers — Luminance, sRGB, Linear, HSV, LAB76, LAB94, LAB2000, sRGB CCIR, Linear CCIR, Tetrapal (device palettes exposed via new `Device::palette_count()/palette_entry()`)
+- **Jitter (sigma + deterministic seed)** on color ditherers (upstream color path has no sigma; applied as pre-jitter in the bridge)
+
+### Bug Fixes
+
+- **Ordered dither was multiplicative with DC bias** — `Float += (M/div-0.5)*Float*mV` gave almost no dither in shadows and brightened the image (`1..N/N` ranges are not centered); replaced by libdither's additive recipe with `(M+0.5)/N-0.5` normalization
+- **Removed non-standard `mErrorClamp`** — old `.isw` files load fine, the key is ignored
+
+### Internal
+
+- **Vendored `src/libdither/`** (28 C sources: ditherers, color models, kdtree, tetrapal, uthash) + `src/dither_bridge.h` adapter (registries, palette cache with per-frame hash drop, BGR float layout handling, R-L mirror trick)
+- **CMake `C_STANDARD 11`** for the target (GCC 14+ defaults to C23 which breaks tetrapal's `bool` typedef; legacy v120 toolset cannot build C99 sources — use CMake-generated solution)
+- New `MOD_MONODITHER` modifier type with full serialize/deserialize/keyframe-interpolation support
+
+---
 ## 5.5 — Pipe Leak Fix, Pre-allocated Buffers & Code Extraction
 
 ### Bug Fixes

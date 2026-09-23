@@ -284,6 +284,9 @@ public:
 			mOut = new uint8_t[n];
 			mOutN = n; mOutW = w; mOutH = h;
 		}
+		// Zero every frame: some libdither writers (e.g. Riemersma below
+		// threshold, unvisited curve pixels, transparent) leave out[] untouched.
+		memset(mOut, 0, (size_t)n);
 
 		// Families with traversal direction: mirror trick (upstream starts L-R).
 		bool mirror = (mFamily == 9 && (mErrDir == 1 || mErrDir == 3));

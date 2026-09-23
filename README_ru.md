@@ -1,6 +1,6 @@
-# Image Spectrumizer 5.5 — Описание
+# Image Spectrumizer 5.6 — Описание
 
-GUI-утилита для конвертации изображений в формат ZX Spectrum и других ретро-платформ, с **обработкой видео**, **интерполяцией ключевых кадров** и **CLI-режимом пайпов**.
+GUI-утилита для конвертации изображений в формат ZX Spectrum и других ретро-платформ, с **обработкой видео**, **интерполяцией ключевых кадров**, **CLI-режимом пайпов** и **дизерингом на libdither** (19 ядер error diffusion, 43 ordered-матрицы, 10 режимов цветовой дистанции, моно-дизеринг).
 
 Оригинальный проект: [Jari Komppa](https://github.com/jarikomppa/img2spec). Расширение (видео, ключевые кадры, CLI, экспорт): [nodeus](https://nodeus.ru).
 
@@ -25,9 +25,18 @@ GUI-утилита для конвертации изображений в фо�
 | **C64 HiRes** | 320x200 | Commodore 64, high-res режим |
 | **C64 Multicolor** | 160x200 | Commodore 64, мультицвет (4 цвета на ячейку 8x8) |
 
-### Модификаторы (14 штук, стековые, real-time)
+### Модификаторы (15 штук, стековые, real-time)
 
-ScalePos, Quantize, Ordered Dither, Error Diffusion Dither, Edge, Blur, Min/Max, HSV, YIQ, RGB, Contrast, Curve, Noise, SuperBlack
+ScalePos, Quantize, Ordered Dither, Error Diffusion Dither, Mono Dither, Edge, Blur, Min/Max, HSV, YIQ, RGB, Contrast, Curve, Noise, SuperBlack
+
+### Дизеринг (libdither)
+
+Дизеринг работает на вендорном [libdither](https://github.com/robertkist/libdither) (`src/libdither/`, см. `VENDOR.txt`):
+
+- **Error Diffusion Dither** — 19 ядер: Floyd-Steinberg, Jarvis-Judice-Ninke, Stucki, Burkes, Sierra3, Sierra2, Sierra Lite, Diagonal, ShiauFan 1/2/3, Diffusion 1D/2D, Fake Floyd-Steinberg, Atkinson, Steve Pigeon, Robert Kist, Stevenson-Arce, Xot. Настройки: направление (4 режима, вкл. serpentine), джиттер (sigma + seed), цветовая дистанция
+- **Ordered Dither** — 43 матрицы: Bayer 2x2–32x32, Blue Noise 128x128, Dispersed/Void dots, Non-Rectangular, Ulichney, Clustered Dot 1–11, Central/Balanced/Diagonal points, Magic Circle/45°/standard, Variable 2x2/4x4 (step), Interleaved Gradient. Настройки: сдвиги X/Y, джиттер, цветовая дистанция
+- **Mono Dither** (новый) — 11 яркостных семейств: Threshold (+Auto), Grid, Pattern, Dot Diffusion, Dot Lippens, Variable Error Diffusion (Ostromoukhov/Zhou Fang), DBS, Kacker-Allebach, Riemersma (8 кривых), моно Error Diffusion, моно Ordered. Переключатель маски: Modulate (сохраняет оттенок) / Replace B/W, плюс Invert и linear-gamma luma
+- **Цветовая дистанция** (10 режимов для цветных дизеров): Luminance, sRGB, Linear, HSV, LAB76, LAB94, LAB2000, sRGB CCIR, Linear CCIR, Tetrapal
 
 ### Форматы экспорта
 
@@ -93,7 +102,7 @@ cmake ..
 make
 ```
 
-Зависимости: SDL2, OpenGL. На Linux: GTK3. На macOS: AppKit.
+Зависимости: SDL2, OpenGL. На Linux: GTK3. На macOS: AppKit. Вендорные C-исходники libdither требуют C11 или новее (в CMakeLists задан `C_STANDARD 11`; легаси-тулсет v120 их не соберёт — используйте решение, сгенерированное CMake).
 
 ### Visual Studio
 
@@ -110,6 +119,10 @@ make
 | **Dear ImGui** | MIT | https://github.com/ocornut/imgui |
 | **Parson** | MIT | https://github.com/kgabis/parson |
 | **stb libraries** | Public Domain | https://github.com/nothings/stb |
+| **libdither** | MIT | https://github.com/robertkist/libdither |
+| **kdtree** (через libdither) | MIT-style, нужна атрибуция | https://github.com/jtsiomb/kdtree |
+| **uthash** (через libdither) | BSD-style, нужна атрибуция | https://github.com/troydhanson/uthash |
+| **tetrapal** (через libdither) | MIT | в составе libdither |
 | **ffmpeg** | GPL/LGPL | https://ffmpeg.org/ |
 
 ---

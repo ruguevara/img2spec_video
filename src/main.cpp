@@ -58,7 +58,7 @@ Still, if you find it useful, great!
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include "stb_image_resize.h"
 
-#define VERSION "5.5"
+#define VERSION "5.6"
 
 #define SERIALIZE(x) json_object_dotset_number(root, #x, x);
 #define DESERIALIZE(x) if (json_object_dotget_value(root, #x) != NULL) x = json_object_dotget_number(root, #x);
@@ -1646,6 +1646,15 @@ int main(int aParamc, char**aParams)
 					"--------------\n"
 					"Display bitmap filled with half-filled tiles for super-low res,\n"
 					"relatively high color mode.\n"
+					"\n"
+					"Dithering (libdither):\n"
+					"----------------------\n"
+					"- Error Diffusion: 19 kernels (Floyd-Steinberg ... Xot), direction,\n"
+					"  jitter (sigma+seed), 10 color distance modes\n"
+					"- Ordered: 43 matrices (Bayer ... Blue Noise, Variable, Gradient),\n"
+					"  X/Y offsets, jitter, color distance\n"
+					"- Mono Dither: 11 luminance families (Threshold ... Riemersma),\n"
+					"  mask apply Modulate/Replace B/W + Invert\n"
 					);
 			}
 			ImGui::End();
