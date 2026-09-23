@@ -2,6 +2,7 @@
 #define IMG2SPEC_NONWIN32_H
 
 #define ALL_FILES "*"
+#define PATH_SEP "/"
 
 #ifdef __APPLE__
 #define ALL_FILES "*.*"
