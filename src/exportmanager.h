@@ -3,11 +3,12 @@
 // video/keyframe state, the device, modifier stack and pipe-mode helpers.
 #pragma once
 
+static int gExportRunning = 0;
+
 #ifdef _WIN32
 #include <windows.h>
 static PROCESS_INFORMATION gExportProc;
 static HANDLE gExportStderrRead = NULL;
-static int gExportRunning = 0;
 static long gExportLogPos = 0;
 static int gRemuxRunning = 0;
 static PROCESS_INFORMATION gRemuxProc = {0};

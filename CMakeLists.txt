@@ -83,7 +83,10 @@ add_definitions(-DIMGUI_INCLUDE_IMGUI_USER_INL)
 
 add_executable(img2spec_video WIN32 ${SOURCES})
 set_target_properties(img2spec_video PROPERTIES OUTPUT_NAME "img2spec_video")
-target_link_libraries(img2spec_video -Wl,--whole-archive ${SDL2_MAIN_LIBRARY} -Wl,--no-whole-archive ${SDL2_LIBRARIES} ${OPENGL_LIBRARIES})
+if (WIN32)
+    target_link_libraries(img2spec_video -Wl,--whole-archive ${SDL2_MAIN_LIBRARY} -Wl,--no-whole-archive)
+endif ()
+target_link_libraries(img2spec_video ${SDL2_LIBRARIES} ${OPENGL_LIBRARIES})
 
 if (WIN32)
     target_link_libraries(img2spec_video winmm imm32 version)
