@@ -59,6 +59,18 @@ public:
 		return gSpeccyPalette[rgb_to_speccy_pal(c, 0, 16)] | 0xff000000;
 	}
 
+	virtual int palette_count()
+	{
+		return 16;
+	}
+
+	virtual int palette_entry(int i)
+	{
+		if (i < 0) i = 0;
+		if (i > 15) i = 15;
+		return gSpeccyPalette[i];
+	}
+
 	virtual void filter()
 	{
 		int x, y, i, j;

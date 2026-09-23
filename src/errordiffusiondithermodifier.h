@@ -1,23 +1,32 @@
 class ErrorDiffusionDitherModifier : public Modifier
 {
 public:
-	float mV;
-	int mModel;
-	int mDirection;
+	float mV;        // strength 0..2
+	int mModel;      // 0..18, LD_ERRDIFF (0..6 keep legacy order)
+	int mDirection;  // 0 L-R, 1 R-L, 2 bidir L-first, 3 bidir R-first
+	float mSigma;    // pre-jitter 0..1 (bridge extension: upstream color has no sigma)
+	int mCompare;    // 0..9, LD_COMPARE (color distance)
+	int mSeed;       // jitter seed (deterministic; 0 = fixed default)
 	int mOnce;
-	float mErrorClamp;
-	float *mData;  // pre-allocated working buffer (2.1)
-	int mDataSize;
+
+	CachedPalette *mPal;
+	char mPalDev[64];
+	int mPalCount, mPalMode;
+	ColorImage *mImg;
+	int *mOut;
+	float *mWork;
+	int mWorkN;
 
 	virtual char *getname() { return "ErrorDiffusionDither"; }
-
 
 	virtual void serialize(JSON_Object * root)
 	{
 		SERIALIZE(mV);
 		SERIALIZE(mModel);
 		SERIALIZE(mDirection);
-		SERIALIZE(mErrorClamp);
+		SERIALIZE(mSigma);
+		SERIALIZE(mCompare);
+		SERIALIZE(mSeed);
 	}
 
 	virtual void deserialize(JSON_Object * root)
@@ -26,8 +35,15 @@ public:
 		DESERIALIZE(mV);
 		DESERIALIZE(mModel);
 		DESERIALIZE(mDirection);
-		DESERIALIZE(mErrorClamp);
+		DESERIALIZE(mSigma);
+		DESERIALIZE(mCompare);
+		DESERIALIZE(mSeed);
 #pragma warning(default:4244; default:4800)
+		// NOTE: legacy mErrorClamp key (pre-libdither) is ignored on purpose.
+		if (mModel < 0) mModel = 0;
+		if (mModel > LD_ERRDIFF_COUNT - 1) mModel = LD_ERRDIFF_COUNT - 1;
+		if (mCompare < 0) mCompare = 0;
+		if (mCompare > LD_COMPARE_COUNT - 1) mCompare = LD_COMPARE_COUNT - 1;
 	}
 
 	virtual int gettype()
@@ -41,14 +57,25 @@ public:
 		mModel = 0;
 		mOnce = 0;
 		mDirection = 0;
-		mErrorClamp = 1;
-		mData = 0;
-		mDataSize = 0;
+		mSigma = 0;
+		mCompare = 1; // sRGB
+		mSeed = 0;
+		mPal = 0;
+		mPalDev[0] = 0;
+		mPalCount = -1;
+		mPalMode = -1;
+		mImg = 0;
+		mOut = 0;
+		mWork = 0;
+		mWorkN = 0;
 	}
 
 	virtual ~ErrorDiffusionDitherModifier()
 	{
-		delete[] mData;
+		LD_FreePalette(mPal);
+		if (mImg) ColorImage_free(mImg);
+		delete[] mOut;
+		delete[] mWork;
 	}
 
 	virtual int ui()
@@ -67,19 +94,26 @@ public:
 			ret = common();
 
 			complexsliderfloat("Strength", &mV, 0, 2, 1, 0.001f);
-			if (ImGui::Combo("##Model  ", &mModel, "Floyd-Steinberg\0Jarvis-Judice-Ninke\0Stucki\0Burkes\0Sierra3\0Sierra2\0Sierra2-4A\0")) { gDirty = 1; } ImGui::SameLine();
-			if (ImGui::Button("-##model")) { gDirty = 1;  mModel = (mModel + 7 - 1) % 7; } ImGui::SameLine();
-			if (ImGui::Button("+##model")) { gDirty = 1;  mModel = (mModel + 7 + 1) % 7; } ImGui::SameLine();
-			if (ImGui::Button("Reset##model     ")) { gDirty = 1; mModel = 0; }ImGui::SameLine();
+			if (ImGui::Combo("##Model  ", &mModel, LD_ERRDIFF_COMBO)) { gDirty = 1; } ImGui::SameLine();
+			if (ImGui::Button("-##model")) { gDirty = 1; mModel = (mModel + LD_ERRDIFF_COUNT - 1) % LD_ERRDIFF_COUNT; } ImGui::SameLine();
+			if (ImGui::Button("+##model")) { gDirty = 1; mModel = (mModel + LD_ERRDIFF_COUNT + 1) % LD_ERRDIFF_COUNT; } ImGui::SameLine();
+			if (ImGui::Button("Reset##model     ")) { gDirty = 1; mModel = 0; } ImGui::SameLine();
 			ImGui::Text("Model");
 
 			if (ImGui::Combo("##Direction  ", &mDirection, "Left-right\0Right-left\0Bidirectional, left-right first\0Bidirectional, right-left first\0")) { gDirty = 1; } ImGui::SameLine();
-			if (ImGui::Button("-##Direction")) { gDirty = 1;  mDirection = (mDirection + 4 - 1) % 4; } ImGui::SameLine();
-			if (ImGui::Button("+##Direction")) { gDirty = 1;  mDirection = (mDirection + 4 + 1) % 4; } ImGui::SameLine();
-			if (ImGui::Button("Reset##Direction     ")) { gDirty = 1; mDirection = 0; }ImGui::SameLine();
+			if (ImGui::Button("-##Direction")) { gDirty = 1; mDirection = (mDirection + 4 - 1) % 4; } ImGui::SameLine();
+			if (ImGui::Button("+##Direction")) { gDirty = 1; mDirection = (mDirection + 4 + 1) % 4; } ImGui::SameLine();
+			if (ImGui::Button("Reset##Direction     ")) { gDirty = 1; mDirection = 0; } ImGui::SameLine();
 			ImGui::Text("Direction");
 
-			complexsliderfloat("Maximum error", &mErrorClamp, 0, 2, 1, 0.001f);
+			complexsliderfloat("Jitter (sigma)", &mSigma, 0, 1, 0, 0.001f);
+			complexsliderint("Jitter seed", &mSeed, 0, 9999, 0, 1);
+
+			if (ImGui::Combo("##Compare  ", &mCompare, LD_COMPARE_COMBO)) { gDirty = 1; } ImGui::SameLine();
+			if (ImGui::Button("-##compare")) { gDirty = 1; mCompare = (mCompare + LD_COMPARE_COUNT - 1) % LD_COMPARE_COUNT; } ImGui::SameLine();
+			if (ImGui::Button("+##compare")) { gDirty = 1; mCompare = (mCompare + LD_COMPARE_COUNT + 1) % LD_COMPARE_COUNT; } ImGui::SameLine();
+			if (ImGui::Button("Reset##compare     ")) { gDirty = 1; mCompare = 1; } ImGui::SameLine();
+			ImGui::Text("Color distance");
 		}
 		ImGui::PopID();
 		return ret;
@@ -87,195 +121,35 @@ public:
 
 	virtual void process()
 	{
-		// Reuse pre-allocated buffer; grow only when resolution changes (2.1)
-		int need = gDevice->mXRes * gDevice->mYRes * 3;
-		if (!mData || mDataSize != need)
+		int w = gDevice->mXRes, h = gDevice->mYRes;
+		int n = w * h;
+		if (n <= 0)
+			return;
+		if (!mWork || mWorkN != n)
 		{
-			delete[] mData;
-			mData = new float[need];
-			mDataSize = need;
+			delete[] mWork;
+			delete[] mOut;
+			if (mImg) ColorImage_free(mImg);
+			mWork = new float[n * 3];
+			mOut = new int[n];
+			mImg = ColorImage_new(w, h);
+			mWorkN = n;
 		}
-		float *data = mData;
-		memcpy(data, gBitmapProcFloat, sizeof(float) * gDevice->mXRes * gDevice->mYRes * 3);
-		int i, j;
+		if (mModel < 0 || mModel >= LD_ERRDIFF_COUNT) mModel = 0;
 
-		float floyd_steinberg[] =
-		{
-			0.0f / 16.0f, 0.0f / 16.0f, 0.0f / 16.0f, 7.0f / 16.0f, 0.0f / 16.0f,
-			0.0f / 16.0f, 3.0f / 16.0f, 5.0f / 16.0f, 1.0f / 16.0f, 0.0f / 16.0f,
-			0.0f / 16.0f, 0.0f / 16.0f, 0.0f / 16.0f, 0.0f / 16.0f, 0.0f / 16.0f
-		};
+		memcpy(mWork, gBitmapProcFloat, sizeof(float) * n * 3);
+		LD_JitterFloat(mWork, n, mSigma, (unsigned int)mSeed);
+		bool mirror = (mDirection == 1 || mDirection == 3);
+		bool serpentine = (mDirection >= 2);
+		LD_FillColorImage(mImg, mWork, w, mirror);
+		LD_EnsurePalette(mPal, mPalDev, 64, mPalCount, mPalMode, gDevice, mCompare);
 
-		float jarvis_judice_ninke[] =
-		{
-			0.0f / 48.0f, 0.0f / 48.0f, 0.0f / 48.0f, 7.0f / 48.0f, 5.0f / 48.0f,
-			3.0f / 48.0f, 5.0f / 48.0f, 7.0f / 48.0f, 5.0f / 48.0f, 3.0f / 48.0f,
-			1.0f / 48.0f, 3.0f / 48.0f, 5.0f / 48.0f, 3.0f / 48.0f, 1.0f / 48.0f
-		};
+		ErrorDiffusionMatrix *m = LD_ERRDIFF[mModel].fn();
+		error_diffusion_dither_color(mImg, m, mPal, serpentine, mOut);
+		ErrorDiffusionMatrix_free(m);
+		CachedPalette_free_cache(mPal);
 
-		float stucki[] =
-		{
-			0.0f / 42.0f, 0.0f / 42.0f, 0.0f / 42.0f, 8.0f / 42.0f, 4.0f / 42.0f,
-			2.0f / 42.0f, 4.0f / 42.0f, 8.0f / 42.0f, 4.0f / 42.0f, 2.0f / 42.0f,
-			1.0f / 42.0f, 2.0f / 42.0f, 4.0f / 42.0f, 2.0f / 42.0f, 1.0f / 42.0f
-		};
-
-		float burkes[] =
-		{
-			0.0f / 32.0f, 0.0f / 32.0f, 0.0f / 32.0f, 8.0f / 32.0f, 4.0f / 32.0f,
-			2.0f / 32.0f, 4.0f / 32.0f, 8.0f / 32.0f, 4.0f / 32.0f, 2.0f / 32.0f,
-			0.0f / 32.0f, 0.0f / 32.0f, 0.0f / 32.0f, 0.0f / 32.0f, 0.0f / 32.0f
-		};
-
-		float sierra3[] =
-		{
-			0.0f / 32.0f, 0.0f / 32.0f, 0.0f / 32.0f, 5.0f / 32.0f, 3.0f / 32.0f,
-			2.0f / 32.0f, 4.0f / 32.0f, 5.0f / 32.0f, 4.0f / 32.0f, 2.0f / 32.0f,
-			0.0f / 32.0f, 2.0f / 32.0f, 3.0f / 32.0f, 2.0f / 32.0f, 0.0f / 32.0f
-		};
-
-		float sierra2[] =
-		{
-			0.0f / 16.0f, 0.0f / 16.0f, 0.0f / 16.0f, 4.0f / 16.0f, 3.0f / 16.0f,
-			1.0f / 16.0f, 2.0f / 16.0f, 3.0f / 16.0f, 2.0f / 16.0f, 1.0f / 16.0f,
-			0.0f / 16.0f, 0.0f / 16.0f, 0.0f / 16.0f, 0.0f / 16.0f, 0.0f / 16.0f
-		};
-
-		float sierra2_4a[] =
-		{
-			0.0f / 4.0f, 0.0f / 4.0f, 0.0f / 4.0f, 2.0f / 4.0f, 0.0f / 4.0f,
-			0.0f / 4.0f, 1.0f / 4.0f, 1.0f / 4.0f, 0.0f / 4.0f, 0.0f / 4.0f,
-			0.0f / 4.0f, 0.0f / 4.0f, 0.0f / 4.0f, 0.0f / 4.0f, 0.0f / 4.0f
-		};
-
-		float *matrix = floyd_steinberg;
-
-		switch (mModel)
-		{
-		case 0:
-			matrix = floyd_steinberg;
-			break;
-		case 1:
-			matrix = jarvis_judice_ninke;
-			break;
-		case 2:
-			matrix = stucki;
-			break;
-		case 3:
-			matrix = burkes;
-			break;
-		case 4:
-			matrix = sierra3;
-			break;
-		case 5:
-			matrix = sierra2;
-			break;
-		case 6:
-			matrix = sierra2_4a;
-			break;
-		}
-
-		int xpos, ypos;
-		int xpos0 = 0, ypos0 = 0;
-		int xposi = 1, yposi = 1;
-		int dir = 0;
-		switch (mDirection)
-		{
-		case 0:
-		case 2:
-			xpos0 = 0;
-			ypos0 = 0;
-			xposi = 1;
-			yposi = 1;
-			dir = 0;
-			break;
-		case 1:
-		case 3:
-			xpos0 = gDevice->mXRes-1;
-			ypos0 = 0;
-			xposi = -1;
-			yposi = 1;
-			dir = 1;
-			break;
-		}
-
-		for (i = 0, ypos = ypos0; i < gDevice->mYRes; i++, ypos += yposi)
-		{
-			for (j = 0, xpos = xpos0; j < gDevice->mXRes; j++, xpos += xposi)
-			{
-				int pos = (ypos * gDevice->mXRes + xpos);
-
-				int col = float_to_color(
-					data[pos * 3 + 0],
-					data[pos * 3 + 1],
-					data[pos * 3 + 2]);
-
-				int approx = gDevice->estimate_rgb(col);
-
-				float r = data[pos * 3 + 2] - ((approx >> 0) & 0xff) / 255.0f;
-				float g = data[pos * 3 + 1] - ((approx >> 8) & 0xff) / 255.0f;
-				float b = data[pos * 3 + 0] - ((approx >> 16) & 0xff) / 255.0f;
-
-				if (abs(r) > mErrorClamp) r = (r > 0) ? mErrorClamp : -mErrorClamp;
-				if (abs(g) > mErrorClamp) g = (g > 0) ? mErrorClamp : -mErrorClamp;
-				if (abs(b) > mErrorClamp) b = (b > 0) ? mErrorClamp : -mErrorClamp;
-
-				int x, y;
-				for (y = 0; y < 3; y++)
-				{
-					for (x = 0; x < 5; x++)
-					{
-						if (ypos + y < gDevice->mYRes && x + xpos - 2 >= 0 && x + xpos - 2 < gDevice->mXRes)
-						{
-							pos = ((ypos + y) * gDevice->mXRes + xpos + x - 2);
-							float m;
-							if (dir)
-							{
-								m = matrix[y * 5 + 4 - x];
-							}
-							else
-							{
-								m = matrix[y * 5 + x];
-							}
-
-							data[pos * 3 + 2] += r * m;
-							data[pos * 3 + 1] += g * m;
-							data[pos * 3 + 0] += b * m;
-						}
-					}
-				}
-
-			}
-			if (mDirection > 1)
-			{
-				switch (dir)
-				{
-				case 0:
-					xpos0 = gDevice->mXRes-1;
-					ypos0 = 0;
-					xposi = -1;
-					yposi = 1;
-					dir = 1;
-					break;
-				case 1:
-					xpos0 = 0;
-					ypos0 = 0;
-					xposi = 1;
-					yposi = 1;
-					dir = 0;
-					break;
-				}
-			}
-		}
-
-		// Apply (with strength)
-		for (i = 0; i < gDevice->mXRes * gDevice->mYRes; i++)
-		{
-			if (mB_en) gBitmapProcFloat[i * 3 + 0] += (data[i * 3 + 0] - gBitmapProcFloat[i * 3 + 0]) * mV;
-			if (mG_en) gBitmapProcFloat[i * 3 + 1] += (data[i * 3 + 1] - gBitmapProcFloat[i * 3 + 1]) * mV;
-			if (mR_en) gBitmapProcFloat[i * 3 + 2] += (data[i * 3 + 2] - gBitmapProcFloat[i * 3 + 2]) * mV;
-		}
-		// (buffer is reused member storage now — freed in destructor)
+		LD_ApplyIndices(gBitmapProcFloat, mWork, mOut, mPal, n, w, mirror, mV, mR_en, mG_en, mB_en);
 	}
 
 };

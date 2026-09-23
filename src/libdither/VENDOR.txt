@@ -1,0 +1,8 @@
+Vendored copy of https://github.com/robertkist/libdither
+Upstream commit: 7bf49c5324b8b8d5ce321d549f89fb6c75a9d859 (2025-10-05, main)
+Content: src/libdither/* from upstream (all .c/.h + kdtree/ + uthash/ + tetrapal/)
+plus upstream LICENSE and LICENSE_ADDITIONAL (this directory).
+Third-party attributions required by upstream:
+- kdtree (see kdtree/LICENSE): include license terms in source and binary distributions.
+- uthash (see uthash/LICENSE): include license terms in source distributions.
+Do not edit vendored files; img2spec integration lives in src/dither_bridge.h.

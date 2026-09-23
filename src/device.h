@@ -10,6 +10,10 @@ public:
 	int mYRes;
 	virtual void filter() = 0;
 	virtual int estimate_rgb(int c) = 0;
+	// Fixed target palette for libdither color dithering (dither_bridge.h).
+	// Returns 0xRRGGBB entry i (no alpha); count via palette_count().
+	virtual int palette_count() = 0;
+	virtual int palette_entry(int i) = 0;
 	virtual void savescr(FILE * f) = 0;
 	virtual void saveh(FILE * f) = 0;
 	virtual void saveinc(FILE * f) = 0;

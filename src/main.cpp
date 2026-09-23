@@ -180,7 +180,8 @@ enum MODIFIERS
 	MOD_MINMAX,
 	MOD_QUANTIZE,
 	MOD_SUPERBLACK,
-	MOD_CURVE
+	MOD_CURVE,
+	MOD_MONODITHER
 };
 
 #include "device.h"
@@ -194,6 +195,8 @@ Device *gDevice = 0;
 #include "zxhalftiledevice.h"
 #include "c64hiresdevice.h"
 #include "c64multicolordevice.h"
+
+#include "dither_bridge.h"
 
 #include "scaleposmodifier.h"
 #include "rgbmodifier.h"
@@ -209,6 +212,7 @@ Device *gDevice = 0;
 #include "contrastmodifier.h"
 #include "superblackmodifier.h"
 #include "curvemodifier.h"
+#include "monodithermodifier.h"
 
 void update_texture(GLuint aTexture, unsigned int *aBitmap)
 {
@@ -519,8 +523,9 @@ void deserialize_snapshot_from_json(JSON_Object *root)
 			case MOD_EDGE: n = new EdgeModifier; break;
 			case MOD_MINMAX: n = new MinmaxModifier; break;
 			case MOD_QUANTIZE: n = new QuantizeModifier; break;
-			case MOD_SUPERBLACK: n = new SuperblackModifier; break;
-			case MOD_CURVE: n = new CurveModifier; break;
+		case MOD_SUPERBLACK: n = new SuperblackModifier; break;
+		case MOD_CURVE: n = new CurveModifier; break;
+		case MOD_MONODITHER: n = new MonoDitherModifier; break;
 			default:
 				number++;
 				sprintf(path, "Stack.Item[%d]", number);
@@ -1452,8 +1457,9 @@ int main(int aParamc, char**aParams)
 				if (ImGui::MenuItem("Add Min/max modifier")) { addModifier(new MinmaxModifier); }
 				ImGui::Separator();
 				if (ImGui::MenuItem("Add Noise modifier")) { addModifier(new NoiseModifier); }
-				if (ImGui::MenuItem("Add Ordered Dither modifier")) { addModifier(new OrderedDitherModifier); }
-				if (ImGui::MenuItem("Add Error Diffusion Dither modifier")) { addModifier(new ErrorDiffusionDitherModifier); }
+			if (ImGui::MenuItem("Add Ordered Dither modifier")) { addModifier(new OrderedDitherModifier); }
+			if (ImGui::MenuItem("Add Error Diffusion Dither modifier")) { addModifier(new ErrorDiffusionDitherModifier); }
+			if (ImGui::MenuItem("Add Mono Dither modifier")) { addModifier(new MonoDitherModifier); }
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("Device"))
@@ -1508,8 +1514,9 @@ int main(int aParamc, char**aParams)
 				ImGui::Separator();
 				if (ImGui::Button("Noise", ImVec2(-1, 0))) { addModifier(new NoiseModifier); }
 				if (ImGui::Button("Ordered Dither", ImVec2(-1, 0))) { addModifier(new OrderedDitherModifier); }
-				// widest button defines the window width, so we can't set it to "auto size"
-				if (ImGui::Button("Error Diffusion Dither" /*, ImVec2(-1, 0)*/)) { addModifier(new ErrorDiffusionDitherModifier); }
+			// widest button defines the window width, so we can't set it to "auto size"
+			if (ImGui::Button("Error Diffusion Dither" /*, ImVec2(-1, 0)*/)) { addModifier(new ErrorDiffusionDitherModifier); }
+			if (ImGui::Button("Mono Dither", ImVec2(-1, 0))) { addModifier(new MonoDitherModifier); }
 			}
 			ImGui::End();
 		}
