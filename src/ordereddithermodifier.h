@@ -1,13 +1,26 @@
 class OrderedDitherModifier : public Modifier
 {
 public:
-	float mV;
+	float mV;       // strength 0..2 (additive threshold amplitude scale)
 	int mOnce;
 	int mXOfs, mYOfs;
-	int mMatrix;
+	int mMatrix;    // 0..42, LD_ORDERED (legacy 0..4 map to Bayer 2/3/3/4/8)
+	float mSigma;   // pre-jitter 0..0.2 (bridge extension: upstream color has no sigma)
+	int mCompare;   // 0..9, LD_COMPARE (color distance)
+	int mSeed;      // jitter seed (deterministic; 0 = fixed default)
+	int mVarStep;   // 0..100, Variable 2x2/4x4
+	int mGradSize;  // interleaved gradient size
+	float mGradA, mGradB, mGradC; // interleaved gradient params
+
+	CachedPalette *mPal;
+	char mPalDev[64];
+	int mPalCount, mPalMode;
+	ColorImage *mImg;
+	int *mOut;
+	float *mWork;
+	int mWorkN;
 
 	virtual char *getname() { return "OrderedDither"; }
-
 
 	virtual void serialize(JSON_Object * root)
 	{
@@ -15,6 +28,14 @@ public:
 		SERIALIZE(mXOfs);
 		SERIALIZE(mYOfs);
 		SERIALIZE(mMatrix);
+		SERIALIZE(mSigma);
+		SERIALIZE(mCompare);
+		SERIALIZE(mSeed);
+		SERIALIZE(mVarStep);
+		SERIALIZE(mGradSize);
+		SERIALIZE(mGradA);
+		SERIALIZE(mGradB);
+		SERIALIZE(mGradC);
 	}
 
 	virtual void deserialize(JSON_Object * root)
@@ -24,7 +45,21 @@ public:
 		DESERIALIZE(mXOfs);
 		DESERIALIZE(mYOfs);
 		DESERIALIZE(mMatrix);
+		DESERIALIZE(mSigma);
+		DESERIALIZE(mCompare);
+		DESERIALIZE(mSeed);
+		DESERIALIZE(mVarStep);
+		DESERIALIZE(mGradSize);
+		DESERIALIZE(mGradA);
+		DESERIALIZE(mGradB);
+		DESERIALIZE(mGradC);
 #pragma warning(default:4244; default:4800)
+		// Legacy 0..4 (2x2, 3x3, 3x3alt, 4x4, 8x8) land on Bayer
+		// 2/3/3/4/8 automatically (same indices in the new registry).
+		if (mMatrix < 0) mMatrix = 0;
+		if (mMatrix > LD_ORDERED_COUNT - 1) mMatrix = LD_ORDERED_COUNT - 1;
+		if (mCompare < 0) mCompare = 0;
+		if (mCompare > LD_COMPARE_COUNT - 1) mCompare = LD_COMPARE_COUNT - 1;
 	}
 
 	virtual int gettype()
@@ -32,14 +67,37 @@ public:
 		return MOD_ORDEREDDITHER;
 	}
 
-
 	OrderedDitherModifier()
 	{
 		mV = 1.0f;
 		mOnce = 0;
 		mXOfs = 0;
 		mYOfs = 0;
-		mMatrix = 4;
+		mMatrix = 3; // Bayer 8x8 (closest to old default index 4 visually)
+		mSigma = 0.0f;
+		mCompare = 1; // sRGB
+		mSeed = 0;
+		mVarStep = 0;
+		mGradSize = 8;
+		mGradA = 0.5f;
+		mGradB = 0.5f;
+		mGradC = 50.0f;
+		mPal = 0;
+		mPalDev[0] = 0;
+		mPalCount = -1;
+		mPalMode = -1;
+		mImg = 0;
+		mOut = 0;
+		mWork = 0;
+		mWorkN = 0;
+	}
+
+	virtual ~OrderedDitherModifier()
+	{
+		LD_FreePalette(mPal);
+		if (mImg) ColorImage_free(mImg);
+		delete[] mOut;
+		delete[] mWork;
 	}
 
 	virtual int ui()
@@ -58,15 +116,35 @@ public:
 			ret = common();
 			complexsliderfloat("Strength", &mV, 0, 2, 1, 0.001f);
 
-			if (ImGui::Combo("##Matrix  ", &mMatrix, "2x2\0" "3x3\0" "3x3 (alt)\0" "4x4\0" "8x8\0")) { gDirty = 1; } ImGui::SameLine();
-			if (ImGui::Button("-##matrix")) { gDirty = 1;  mMatrix = (mMatrix + 5 - 1) % 5; } ImGui::SameLine();
-			if (ImGui::Button("+##matrix")) { gDirty = 1;  mMatrix = (mMatrix + 5 + 1) % 5; } ImGui::SameLine();
-			if (ImGui::Button("Reset##matrix     ")) { gDirty = 1; mMatrix = 4; } ImGui::SameLine();
+			if (ImGui::Combo("##Matrix  ", &mMatrix, LD_ORDERED_COMBO)) { gDirty = 1; } ImGui::SameLine();
+			if (ImGui::Button("-##matrix")) { gDirty = 1; mMatrix = (mMatrix + LD_ORDERED_COUNT - 1) % LD_ORDERED_COUNT; } ImGui::SameLine();
+			if (ImGui::Button("+##matrix")) { gDirty = 1; mMatrix = (mMatrix + LD_ORDERED_COUNT + 1) % LD_ORDERED_COUNT; } ImGui::SameLine();
+			if (ImGui::Button("Reset##matrix     ")) { gDirty = 1; mMatrix = 3; } ImGui::SameLine();
 			ImGui::Text("Matrix");
 
-			complexsliderint("X Offset", &mXOfs, 0, 8, 0, 1);
-			complexsliderint("Y Offset", &mYOfs, 0, 8, 0, 1);
+			if (mMatrix == LD_ORDERED_FIXED || mMatrix == LD_ORDERED_FIXED + 1)
+			{
+				complexsliderint("Variable step", &mVarStep, 0, 100, 0, 1);
+			}
+			if (mMatrix == LD_ORDERED_FIXED + 2)
+			{
+				complexsliderint("Gradient size", &mGradSize, 2, 64, 8, 1);
+				complexsliderfloat("Gradient A", &mGradA, 0, 1, 0.5f, 0.001f);
+				complexsliderfloat("Gradient B", &mGradB, 0, 1, 0.5f, 0.001f);
+				complexsliderfloat("Gradient C", &mGradC, 0, 100, 50, 0.01f);
+			}
 
+			complexsliderint("X Offset", &mXOfs, 0, 32, 0, 1);
+			complexsliderint("Y Offset", &mYOfs, 0, 32, 0, 1);
+
+			complexsliderfloat("Jitter (sigma)", &mSigma, 0, 0.2f, 0, 0.001f);
+			complexsliderint("Jitter seed", &mSeed, 0, 9999, 0, 1);
+
+			if (ImGui::Combo("##Compare  ", &mCompare, LD_COMPARE_COMBO)) { gDirty = 1; } ImGui::SameLine();
+			if (ImGui::Button("-##compare")) { gDirty = 1; mCompare = (mCompare + LD_COMPARE_COUNT - 1) % LD_COMPARE_COUNT; } ImGui::SameLine();
+			if (ImGui::Button("+##compare")) { gDirty = 1; mCompare = (mCompare + LD_COMPARE_COUNT + 1) % LD_COMPARE_COUNT; } ImGui::SameLine();
+			if (ImGui::Button("Reset##compare     ")) { gDirty = 1; mCompare = 1; } ImGui::SameLine();
+			ImGui::Text("Color distance");
 		}
 		ImGui::PopID();
 		return ret;
@@ -74,89 +152,34 @@ public:
 
 	virtual void process()
 	{
-
-		float matrix2x2[] =
+		int w = gDevice->mXRes, h = gDevice->mYRes;
+		int n = w * h;
+		if (n <= 0)
+			return;
+		if (!mWork || mWorkN != n)
 		{
-			1.0f, 3.0f,
-			4.0f, 2.0f
-		};
-
-		float matrix3x3[] =
-		{
-			8.0f, 3.0f, 4.0f,
-			6.0f, 1.0f, 2.0f,
-			7.0f, 5.0f, 9.0f
-		};
-
-		float matrix3x3alt[] =
-		{
-			1.0f, 7.0f, 4.0f,
-			5.0f, 8.0f, 3.0f,
-			6.0f, 2.0f, 9.0f
-		};
-
-		float matrix4x4[] =
-		{
-			1.0f, 9.0f, 3.0f, 11.0f,
-			13.0f, 5.0f, 15.0f, 7.0f,
-			4.0f, 12.0f, 2.0f, 10.0f,
-			16.0f, 8.0f, 14.0f, 6.0f
-		};
-
-		float matrix8x8[] =
-		{
-			0.0f, 32.0f, 8.0f, 40.0f, 2.0f, 34.0f, 10.0f, 42.0f,
-			48.0f, 16.0f, 56.0f, 24.0f, 50.0f, 18.0f, 58.0f, 26.0f,
-			12.0f, 44.0f, 4.0f, 36.0f, 14.0f, 46.0f, 6.0f, 38.0f,
-			60.0f, 28.0f, 52.0f, 20.0f, 62.0f, 30.0f, 54.0f, 22.0f,
-			3.0f, 35.0f, 11.0f, 43.0f, 1.0f, 33.0f, 9.0f, 41.0f,
-			51.0f, 19.0f, 59.0f, 27.0f, 49.0f, 17.0f, 57.0f, 25.0f,
-			15.0f, 47.0f, 7.0f, 39.0f, 13.0f, 45.0f, 5.0f, 37.0f,
-			63.0f, 31.0f, 55.0f, 23.0f, 61.0f, 29.0f, 53.0f, 21.0f
-		};
-
-		float *matrix;
-		int matsize;
-		float matdiv;
-
-		switch (mMatrix)
-		{
-		case 0:
-			matrix = matrix2x2;
-			matsize = 2;
-			matdiv = 4.0f;
-			break;
-		case 1:
-			matrix = matrix3x3;
-			matsize = 3;
-			matdiv = 9.0f;
-			break;
-		case 2:
-			matrix = matrix3x3alt;
-			matsize = 3;
-			matdiv = 9.0f;
-			break;
-		case 3:
-			matrix = matrix4x4;
-			matsize = 4;
-			matdiv = 16.0f;
-			break;
-//		case 4:
-		default:
-			matrix = matrix8x8;
-			matsize = 8;
-			matdiv = 63.0f;
-			break;
+			delete[] mWork;
+			delete[] mOut;
+			if (mImg) ColorImage_free(mImg);
+			mWork = new float[n * 3];
+			mOut = new int[n];
+			mImg = ColorImage_new(w, h);
+			mWorkN = n;
 		}
-		int i, j;
-		for (i = 0; i < gDevice->mYRes; i++)
-		{
-			for (j = 0; j < gDevice->mXRes; j++)
-			{
-				if (mB_en) gBitmapProcFloat[(i * gDevice->mXRes + j) * 3 + 0] += (matrix[((i + mYOfs) % matsize) * matsize + ((j + mXOfs) % matsize)] / matdiv - 0.5f) * gBitmapProcFloat[(i * gDevice->mXRes + j) * 3 + 0] * mV;
-				if (mG_en) gBitmapProcFloat[(i * gDevice->mXRes + j) * 3 + 1] += (matrix[((i + mYOfs) % matsize) * matsize + ((j + mXOfs) % matsize)] / matdiv - 0.5f) * gBitmapProcFloat[(i * gDevice->mXRes + j) * 3 + 1] * mV;
-				if (mR_en) gBitmapProcFloat[(i * gDevice->mXRes + j) * 3 + 2] += (matrix[((i + mYOfs) % matsize) * matsize + ((j + mXOfs) % matsize)] / matdiv - 0.5f) * gBitmapProcFloat[(i * gDevice->mXRes + j) * 3 + 2] * mV;
-			}
-		}
+		if (mMatrix < 0 || mMatrix >= LD_ORDERED_COUNT) mMatrix = 3;
+
+		memcpy(mWork, gBitmapProcFloat, sizeof(float) * n * 3);
+		LD_JitterFloat(mWork, n, mSigma, (unsigned int)mSeed);
+		LD_FillColorImage(mImg, mWork, w, false);
+		LD_EnsurePalette(mPal, mPalDev, 64, mPalCount, mPalMode, gDevice, mCompare);
+
+		OrderedDitherMatrix *m = LD_GetOrdered(mMatrix, mVarStep, mGradSize, mGradA, mGradB, mGradC);
+		OrderedDitherMatrix *s = LD_ShiftOrdered(m, mXOfs, mYOfs);
+		ordered_dither_color(mImg, mPal, s ? s : m, mOut);
+		if (s) OrderedDitherMatrix_free(s);
+		OrderedDitherMatrix_free(m);
+		CachedPalette_free_cache(mPal);
+
+		LD_ApplyIndices(gBitmapProcFloat, mWork, mOut, mPal, n, w, false, mV, mR_en, mG_en, mB_en);
 	}
 };

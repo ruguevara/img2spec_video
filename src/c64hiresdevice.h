@@ -84,6 +84,18 @@ public:
 		return gC64Palette[rgb_to_c64_pal(c, 0, 16)] | 0xff000000;
 	}
 
+	virtual int palette_count()
+	{
+		return 16;
+	}
+
+	virtual int palette_entry(int i)
+	{
+		if (i < 0) i = 0;
+		if (i > 15) i = 15;
+		return gC64Palette[i];
+	}
+
 	static int pick_from_2_c64_cols(int c, int col1, int col2)
 	{
 		int r = (c >> 16) & 0xff;

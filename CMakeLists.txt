@@ -47,6 +47,8 @@ set(SOURCES
         src/minmaxmodifier.h
         src/ordereddithermodifier.h
         src/errordiffusiondithermodifier.h
+        src/monodithermodifier.h
+        src/dither_bridge.h
         src/contrastmodifier.h
         src/superblackmodifier.h
         src/curvemodifier.h
@@ -54,6 +56,42 @@ set(SOURCES
         src/platform/common.h
 
         )
+
+# Vendored libdither (C99/C11, MIT + kdtree/uthash attributions, see src/libdither/VENDOR.txt)
+set(LIBDITHER_SOURCES
+        src/libdither/libdither.c
+        src/libdither/ditherimage.c
+        src/libdither/random.c
+        src/libdither/gamma.c
+        src/libdither/queue.c
+        src/libdither/dither_dbs.c
+        src/libdither/dither_dotdiff.c
+        src/libdither/dither_errordiff.c
+        src/libdither/dither_kallebach.c
+        src/libdither/dither_ordered.c
+        src/libdither/dither_riemersma.c
+        src/libdither/dither_threshold.c
+        src/libdither/dither_varerrdiff.c
+        src/libdither/dither_pattern.c
+        src/libdither/dither_dotlippens.c
+        src/libdither/dither_grid.c
+        src/libdither/color_bytepalette.c
+        src/libdither/color_floatcolor.c
+        src/libdither/color_models.c
+        src/libdither/color_quant_mediancut.c
+        src/libdither/color_cachedpalette.c
+        src/libdither/color_colorimage.c
+        src/libdither/color_floatpalette.c
+        src/libdither/color_bytecolor.c
+        src/libdither/color_quant_wu.c
+        src/libdither/color_quant_kdtree.c
+        src/libdither/kdtree/kdtree.c
+        src/libdither/tetrapal/tetrapal.c
+        )
+# MSVC compiles .c as legacy C by default and GCC 14+ defaults to C23;
+# libdither needs C11/C17 (for-init decls, and tetrapal's bool typedef).
+# (C_STANDARD is set on the target after add_executable, see below.)
+set(SOURCES ${SOURCES} ${LIBDITHER_SOURCES})
 
 if (WIN32)
     set(SOURCES ${SOURCES}
@@ -83,6 +121,8 @@ add_definitions(-DIMGUI_INCLUDE_IMGUI_USER_INL)
 
 add_executable(img2spec_video WIN32 ${SOURCES})
 set_target_properties(img2spec_video PROPERTIES OUTPUT_NAME "img2spec_video")
+# See LIBDITHER_SOURCES above: vendored C code requires C11.
+set_target_properties(img2spec_video PROPERTIES C_STANDARD 11)
 if (WIN32)
     target_link_libraries(img2spec_video -Wl,--whole-archive ${SDL2_MAIN_LIBRARY} -Wl,--no-whole-archive)
 endif ()

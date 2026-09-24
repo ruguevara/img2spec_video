@@ -25,6 +25,34 @@
     <ClCompile Include="src\imgui\imgui_impl_sdl.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\parson\parson.c" />
+    <ClCompile Include="src\libdither\libdither.c" />
+    <ClCompile Include="src\libdither\ditherimage.c" />
+    <ClCompile Include="src\libdither\random.c" />
+    <ClCompile Include="src\libdither\gamma.c" />
+    <ClCompile Include="src\libdither\queue.c" />
+    <ClCompile Include="src\libdither\dither_dbs.c" />
+    <ClCompile Include="src\libdither\dither_dotdiff.c" />
+    <ClCompile Include="src\libdither\dither_errordiff.c" />
+    <ClCompile Include="src\libdither\dither_kallebach.c" />
+    <ClCompile Include="src\libdither\dither_ordered.c" />
+    <ClCompile Include="src\libdither\dither_riemersma.c" />
+    <ClCompile Include="src\libdither\dither_threshold.c" />
+    <ClCompile Include="src\libdither\dither_varerrdiff.c" />
+    <ClCompile Include="src\libdither\dither_pattern.c" />
+    <ClCompile Include="src\libdither\dither_dotlippens.c" />
+    <ClCompile Include="src\libdither\dither_grid.c" />
+    <ClCompile Include="src\libdither\color_bytepalette.c" />
+    <ClCompile Include="src\libdither\color_floatcolor.c" />
+    <ClCompile Include="src\libdither\color_models.c" />
+    <ClCompile Include="src\libdither\color_quant_mediancut.c" />
+    <ClCompile Include="src\libdither\color_cachedpalette.c" />
+    <ClCompile Include="src\libdither\color_colorimage.c" />
+    <ClCompile Include="src\libdither\color_floatpalette.c" />
+    <ClCompile Include="src\libdither\color_bytecolor.c" />
+    <ClCompile Include="src\libdither\color_quant_wu.c" />
+    <ClCompile Include="src\libdither\color_quant_kdtree.c" />
+    <ClCompile Include="src\libdither\kdtree\kdtree.c" />
+    <ClCompile Include="src\libdither\tetrapal\tetrapal.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\blurmodifier.h" />
@@ -33,6 +61,7 @@
     <ClInclude Include="src\contrastmodifier.h" />
     <ClInclude Include="src\curvemodifier.h" />
     <ClInclude Include="src\device.h" />
+    <ClInclude Include="src\dither_bridge.h" />
     <ClInclude Include="src\edgemodifier.h" />
     <ClInclude Include="src\errordiffusiondithermodifier.h" />
     <ClInclude Include="src\hsvmodifier.h" />
@@ -40,6 +69,7 @@
     <ClInclude Include="src\imgui\imgui_internal.h" />
     <ClInclude Include="src\minmaxmodifier.h" />
     <ClInclude Include="src\modifier.h" />
+    <ClInclude Include="src\monodithermodifier.h" />
     <ClInclude Include="src\noisemodifier.h" />
     <ClInclude Include="src\ordereddithermodifier.h" />
     <ClInclude Include="src\pal3x64.h" />
